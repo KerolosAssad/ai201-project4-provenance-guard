@@ -92,8 +92,10 @@ All three avoid technical jargon (no raw scores shown to non-technical readers) 
 ```mermaid
 flowchart TD
     A[User] -->|raw text| B[POST /submit]
-    B -->|raw text| C[Signal 1: Stylometric heuristics<br/>structural stats]
-    B -->|raw text| D[Signal 2: Groq LLM<br/>semantic judgment]
+    B -->|raw text| V[Input Validation<br/>checks length, type]
+    V -->|invalid: empty, under 40 words,<br/>over 2000 words, non-text| R[400 Error Response]
+    V -->|valid text| C[Signal 1: Stylometric heuristics<br/>structural stats]
+    V -->|valid text| D[Signal 2: Groq LLM<br/>semantic judgment]
     C -->|stylometric_score| E[Confidence Scorer<br/>combines + penalizes disagreement]
     D -->|llm_score| E
     E -->|combined_score| F[Transparency Label Generator<br/>maps score to label]
@@ -113,7 +115,7 @@ flowchart TD
 
 ### Narrative
 
-In the submission flow, raw text passed to `POST /submit` first runs through the stylometric heuristics (Signal 1), then the Groq LLM (Signal 2) — both are always executed regardless of either result, since the spec requires multi-signal classification on every submission. Their independent scores are then combined by the Confidence Scorer, which explicitly penalizes disagreement between them, before the result is mapped to a transparency label and written to the audit log. In the appeal flow, a creator submits a `content_id` and their reasoning to `POST /appeal`, which updates that content's status to `under_review` and logs the appeal alongside the original decision, without triggering any automated re-classification.
+In the submission flow, raw text passed to `POST /submit` first goes through input validation, which rejects empty, too-short, too-long, or non-text submissions with a 400 error before any signal runs. Valid text then runs through the stylometric heuristics (Signal 1) and the Groq LLM (Signal 2) — both are always executed regardless of either result, since the spec requires multi-signal classification on every submission. Their independent scores are then combined by the Confidence Scorer, which explicitly penalizes disagreement between them, before the result is mapped to a transparency label and written to the audit log. In the appeal flow, a creator submits a `content_id` and their reasoning to `POST /appeal`, which updates that content's status to `under_review` and logs the appeal alongside the original decision, without triggering any automated re-classification.
 
 ### Input Validation (pre-signal)
 
