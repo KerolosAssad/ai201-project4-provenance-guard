@@ -1,12 +1,27 @@
 import uuid
 from flask import Flask, request, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from signals import classify_with_llm
 from stylometric import classify_with_stylometrics
 from confidence_scorer import compute_confidence
-from audit_log import log_submission, get_log
+from labels import generate_label
+from audit_log import log_submission, get_log, find_entry_by_content_id, submit_appeal, get_analytics
 
 app = Flask(__name__)
+
+# Global limit applies across all requests regardless of IP, protecting the
+# shared Groq API quota from being exhausted by many legitimate users at
+# once (e.g. a class of students submitting near a deadline). The per-route
+# limit below is applied on top of this and protects against a single
+# source (one IP) flooding the endpoint.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per minute", "1000 per day"],
+    storage_uri="memory://",
+)
 
 MIN_WORDS = 40
 MAX_WORDS = 2000
@@ -41,7 +56,25 @@ def get_attribution(combined_score):
     return "likely_ai"
 
 
+def validate_appeal(content_id, reasoning):
+    """
+    Input validation for POST /appeal, per planning.md Section 4.
+    Returns an error message string if invalid, or None if valid.
+    """
+    if not isinstance(content_id, str) or not content_id.strip():
+        return "content_id is required."
+
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        return "creator_reasoning must be a non-empty string."
+
+    if find_entry_by_content_id(content_id) is None:
+        return "content_id not found."
+
+    return None
+
+
 @app.route("/submit", methods=["POST"])
+@limiter.limit("10 per minute;100 per day")
 def submit():
     data = request.get_json(silent=True) or {}
     text = data.get("text")
@@ -64,9 +97,7 @@ def submit():
     combined_score = confidence_result["combined_score"]
 
     attribution = get_attribution(combined_score)
-
-    # M5 will replace this with the real label-generation function.
-    label = "Placeholder — real label logic added in M5"
+    label = generate_label(combined_score)
 
     log_submission(
         content_id=content_id,
@@ -96,9 +127,34 @@ def submit():
     }), 200
 
 
+@app.route("/appeal", methods=["POST"])
+@limiter.limit("5 per minute;20 per day")
+def appeal():
+    data = request.get_json(silent=True) or {}
+    content_id = data.get("content_id")
+    creator_reasoning = data.get("creator_reasoning")
+
+    error = validate_appeal(content_id, creator_reasoning)
+    if error:
+        return jsonify({"error": error}), 400
+
+    updated_entry = submit_appeal(content_id, creator_reasoning)
+
+    return jsonify({
+        "content_id": content_id,
+        "status": updated_entry["status"],
+        "appeal_received": True,
+    }), 200
+
+
 @app.route("/log", methods=["GET"])
 def log():
     return jsonify({"entries": get_log()}), 200
+
+
+@app.route("/analytics", methods=["GET"])
+def analytics():
+    return jsonify(get_analytics()), 200
 
 
 if __name__ == "__main__":
