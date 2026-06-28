@@ -1,3 +1,6 @@
 .env
 .venv/
 .DS_Store
+audit_log.json
+__pycache__/
+*.pyc
