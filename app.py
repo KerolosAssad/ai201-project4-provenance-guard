@@ -157,5 +157,15 @@ def analytics():
     return jsonify(get_analytics()), 200
 
 
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    """
+    Global safety net for any exception not already caught by the
+    per-signal/per-route error handling above. Ensures the client always
+    receives a clean JSON error instead of a raw traceback.
+    """
+    return jsonify({"error": "An unexpected server error occurred. Please try again."}), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5050)
