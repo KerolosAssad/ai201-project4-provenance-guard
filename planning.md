@@ -142,3 +142,15 @@ The `POST /appeal` endpoint applies an analogous validation pass: rejecting requ
 - **Spec sections to provide:** Section 3 (Transparency Label Design — all three exact label strings) and Section 4 (Appeals Workflow), along with both diagrams under `## Architecture`.
 - **What I'll ask the AI tool to generate:** the label-generation function that maps a combined confidence score to one of the three exact label strings via the thresholds in Section 2, plus the `POST /appeal` endpoint implementing the validate → log → update-status flow described in Section 4.
 - **How I'll verify:** I'll manually construct combined scores that fall in each of the three threshold bands (e.g. 0.2, 0.5, 0.8) and confirm each one returns the correct verbatim label text from Section 3 with no typos or truncation. For appeals, I'll submit a test appeal against a known `content_id`, then check that (a) a new audit log entry was written linking the appeal to the original decision, and (b) the content's status field actually flips to `"under_review"` when queried afterward.
+
+## Stretch Feature: Analytics Dashboard
+
+**What it does:** a `GET /analytics` endpoint that aggregates over the existing audit log to surface three metrics, with no changes to the detection pipeline itself:
+
+1. **Detection pattern** — the count and percentage of submissions falling into each attribution category (`likely_ai`, `likely_human`, `uncertain`), computed from existing `attribution` fields already stored in every log entry.
+2. **Appeal rate** — the percentage of all submissions that have had an appeal filed (`appeal` is not null), computed from existing `appeal` fields.
+3. **Average signal agreement** — the average `|llm_score - stylometric_score|` across all submissions, computed by reconstructing the diff from existing `llm_score`/`stylometric_score` fields. This ties directly into the confidence-scoring design (Section 1) — a high average disagreement would suggest the two signals are frequently in tension, which is exactly the scenario the agreement-weighted formula exists to handle gracefully.
+
+**Why these three:** the first two are the metrics named explicitly in the spec; the third was chosen because it's diagnostic of the system's own core design decision (signal disagreement → uncertainty), rather than an arbitrary additional metric — it gives a single number that summarizes how often the two signals actually disagree across real usage, which is the central tension the whole confidence-scoring approach was built around.
+
+**Implementation note:** purely additive — reads the existing audit log, computes aggregates, no changes to `/submit`, `/appeal`, signal logic, or scoring logic.
