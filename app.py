@@ -8,6 +8,7 @@ from stylometric import classify_with_stylometrics
 from confidence_scorer import compute_confidence
 from labels import generate_label
 from audit_log import log_submission, get_log, find_entry_by_content_id, submit_appeal, get_analytics
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -161,9 +162,13 @@ def analytics():
 def handle_unexpected_error(e):
     """
     Global safety net for any exception not already caught by the
-    per-signal/per-route error handling above. Ensures the client always
-    receives a clean JSON error instead of a raw traceback.
+    per-signal/per-route error handling above. HTTPExceptions (like
+    Flask-Limiter's 429 on rate-limit exceeded, or Flask's own 404/400s)
+    are allowed to pass through with their correct status code — only
+    genuinely unexpected errors get converted to a generic 500.
     """
+    if isinstance(e, HTTPException):
+        return e
     return jsonify({"error": "An unexpected server error occurred. Please try again."}), 500
 
 
