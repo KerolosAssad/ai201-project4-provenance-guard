@@ -97,7 +97,7 @@ flowchart TD
     C -->|stylometric_score| E[Confidence Scorer<br/>combines + penalizes disagreement]
     D -->|llm_score| E
     E -->|combined_score| F[Transparency Label Generator<br/>maps score to label]
-    F -->|label_text| G[Audit Log - SQLite<br/>writes text, scores, label]
+    F -->|label_text| G[Audit Log - JSON file<br/>writes text, scores, label]
     G -->|confirmation| H[Response to User<br/>label, score, explanation]
 ```
 
@@ -109,7 +109,7 @@ flowchart TD
     B -->|content_id, reasoning| V2[Input Validation<br/>checks content_id exists,<br/>reasoning non-empty]
     V2 -->|invalid: missing/unknown content_id,<br/>empty/non-text reasoning| R2[400 Error Response]
     V2 -->|valid| C2[Status Updater<br/>sets status = under_review]
-    C2 -->|status_update| D2[Audit Log - SQLite<br/>appends appeal entry<br/>linked to original decision]
+    C2 -->|status_update| D2[Audit Log - JSON file<br/>appends appeal entry<br/>linked to original decision]
     D2 -->|confirmation| E2[Response to User<br/>content_id, status: under_review]
 ```
 
@@ -149,7 +149,7 @@ The `POST /appeal` endpoint applies an analogous validation pass: rejecting requ
 
 1. **Detection pattern** — the count and percentage of submissions falling into each attribution category (`likely_ai`, `likely_human`, `uncertain`), computed from existing `attribution` fields already stored in every log entry.
 2. **Appeal rate** — the percentage of all submissions that have had an appeal filed (`appeal` is not null), computed from existing `appeal` fields.
-3. **Average signal agreement** — the average `|llm_score - stylometric_score|` across all submissions, computed by reconstructing the diff from existing `llm_score`/`stylometric_score` fields. This ties directly into the confidence-scoring design (Section 1) — a high average disagreement would suggest the two signals are frequently in tension, which is exactly the scenario the agreement-weighted formula exists to handle gracefully.
+3. **Average signal disagreement** — the average `|llm_score - stylometric_score|` across all submissions, computed by reconstructing the diff from existing `llm_score`/`stylometric_score` fields. This ties directly into the confidence-scoring design (Section 1) — a high average disagreement would suggest the two signals are frequently in tension, which is exactly the scenario the agreement-weighted formula exists to handle gracefully.
 
 **Why these three:** the first two are the metrics named explicitly in the spec; the third was chosen because it's diagnostic of the system's own core design decision (signal disagreement → uncertainty), rather than an arbitrary additional metric — it gives a single number that summarizes how often the two signals actually disagree across real usage, which is the central tension the whole confidence-scoring approach was built around.
 
